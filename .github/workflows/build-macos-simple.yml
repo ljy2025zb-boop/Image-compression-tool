@@ -1,0 +1,70 @@
+name: Build macOS DMG (Simple)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+    
+    - name: Test app
+      run: |
+        python -c "import sys; print('Python:', sys.version)"
+        python -c "import PySide6; print('PySide6:', PySide6.__version__)"
+        python -c "import PIL; print('Pillow:', PIL.__version__)"
+    
+    - name: Build with py2app
+      run: |
+        python setup.py py2app 2>&1 | tee build.log
+        echo "Build completed"
+        ls -la dist/ || echo "No dist folder"
+    
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
+    
+    - name: Check and rename app
+      run: |
+        if [ -d "dist/main.app" ]; then
+          mv "dist/main.app" "dist/ImageCompressor.app"
+          echo "App renamed successfully"
+        else
+          echo "ERROR: main.app not found"
+          ls -la dist/
+          exit 1
+        fi
+    
+    - name: Create DMG
+      run: |
+        hdiutil create \
+          -volname "ImageCompressor" \
+          -srcfolder "dist/ImageCompressor.app" \
+          -ov \
+          -format UDZO \
+          "dist/ImageCompressor.dmg"
+        
+        echo "DMG created:"
+        ls -lh dist/ImageCompressor.dmg
+    
+    - name: Upload DMG
+      uses: actions/upload-artifact@v4
+      with:
+        name: ImageCompressor-DMG
+        path: dist/ImageCompressor.dmg

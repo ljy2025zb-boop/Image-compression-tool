@@ -2,7 +2,7 @@ name: Build macOS DMG
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -14,40 +14,58 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
     
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-    
-    - name: Build macOS app
-      run: |
-        python setup.py py2app
-        mv dist/main.app "dist/图片压缩工具.app"
-    
-    - name: Install create-dmg
+    - name: Install system dependencies
       run: |
         brew install create-dmg
     
-    - name: Create DMG
+    - name: Install Python dependencies
       run: |
-        create-dmg \
-          --volname "图片压缩工具" \
-          --window-size 600 400 \
-          --icon-size 100 \
-          --app-drop-link 425 120 \
-          --no-internet-enable \
-          "dist/ImageCompressor.dmg" \
-          "dist/图片压缩工具.app" || \
-        hdiutil create -volname "图片压缩工具" \
-          -srcfolder "dist/图片压缩工具.app" \
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Verify installation
+      run: |
+        python -c "import PySide6; print('PySide6 version:', PySide6.__version__)"
+        python -c "import PIL; print('Pillow version:', PIL.__version__)"
+        python -c "import py2app; print('py2app installed')"
+    
+    - name: Build macOS app with py2app
+      run: |
+        python setup.py py2app --arch universal2 || python setup.py py2app
+    
+    - name: Verify app creation
+      run: |
+        ls -la dist/
+        if [ -d "dist/main.app" ]; then
+          echo "App created successfully"
+        else
+          echo "Error: App not created"
+          exit 1
+        fi
+    
+    - name: Rename app
+      run: |
+        mv "dist/main.app" "dist/ImageCompressor.app"
+    
+    - name: Create DMG with hdiutil
+      run: |
+        hdiutil create -volname "ImageCompressor" \
+          -srcfolder "dist/ImageCompressor.app" \
           -ov -format UDZO \
           "dist/ImageCompressor.dmg"
+    
+    - name: Verify DMG creation
+      run: |
+        ls -lh dist/ImageCompressor.dmg
+        file dist/ImageCompressor.dmg
     
     - name: Upload DMG artifact
       uses: actions/upload-artifact@v4
       with:
         name: ImageCompressor-macOS
         path: dist/ImageCompressor.dmg
+        if-no-files-found: error
